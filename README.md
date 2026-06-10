@@ -13,10 +13,12 @@ A terminal-based multi-turn chatbot built with Python and NVIDIA NIM (Llama 3.1)
 
 - Support for multiple providers: **NVIDIA**, **OpenRouter**, and **Gemini**
 - Multi-turn conversation with manual history maintenance
-- **Streaming responses** for a better user experience
-- Clean terminal prompts for user and AI messages
+- **Streaming responses** for real-time interaction
+- **Robust Error Handling**: Handles rate limits (429) and server errors (5xx)
+- **Exponential Backoff**: Automatically retries failed requests with increasing delays
+- **Token Counting**: Estimates token usage for each interaction
+- Clean terminal prompts with color-coded feedback
 - Graceful exit with `exit`, `quit`, `Ctrl+C`, or `Ctrl+D`
-- Minimal code footprint
 
 ## Setup
 

@@ -36,6 +36,13 @@ Use these prompts directly in the chatbot.
 - Save the conversation history to a file.
 - Explain how conversation history is maintained in a list.
 
+## Advanced Features
+
+- How do you calculate the token count in this app?
+- Show me how the exponential backoff logic works.
+- What happens when a rate limit (429) is hit?
+- How many tokens did our last exchange use?
+
 ## Exit
 
 - Type `exit` or `quit` inside the app to close it.

@@ -50,8 +50,8 @@ Record each change here after you modify the project.
 - Notes: Manually constructed Gemini URL with key and enabled `follow_redirects=True` in httpx. Refined Gemini streaming JSON parsing.
 
 - Date: 2026-06-10
-- File(s) changed: chatbot.py
-- What changed: Enhanced error logging and added Content-Type/alt=sse headers.
-- Why it changed: To diagnose persistent 404 errors and improve API compatibility.
-- Purpose: Provide better feedback to the user and ensure all required headers are sent.
-- Notes: Added `Content-Type` for OpenRouter and `alt=sse` for Gemini. Added try-except blocks for better error reporting.
+- File(s) changed: chatbot.py, README.md, prompt.md, changeble-log.md
+- What changed: Implemented error handling, exponential backoff, retry logic, and token counting.
+- Why it changed: User requested enhanced reliability and usage tracking.
+- Purpose: Ensure the chatbot remains functional during API instability and provide users with token usage data.
+- Notes: Token counting is a rough estimate (4 chars/token). Exponential backoff uses jitter for better performance.

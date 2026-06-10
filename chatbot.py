@@ -1,7 +1,8 @@
-import os, json, httpx, pathlib, argparse, sys
+import os, json, httpx, pathlib, argparse, sys, time, random
+from config import MAX_RETRIES, BASE_BACKOFF_DELAY, AVG_CHARS_PER_TOKEN
 
 # Terminal Colors
-G, B, R, Y = '\033[92m', '\033[94m', '\033[0m', '\033[93m'
+G, B, R, Y, C = '\033[92m', '\033[94m', '\033[0m', '\033[93m', '\033[96m'
 
 def load_env():
     """Loads environment variables from .env file."""
@@ -39,44 +40,81 @@ def get_config(provider):
     }
     return configs.get(provider)
 
+def count_tokens(text):
+    """Simple token estimation based on character count."""
+    return len(text) // AVG_CHARS_PER_TOKEN
+
+def handle_api_error(status_code, error_body=""):
+    """Maps API status codes to user-friendly messages."""
+    try:
+        data = json.loads(error_body)
+        error_msg = data.get('error', {}).get('message', '') or data.get('message', '')
+    except:
+        error_msg = error_body
+
+    messages = {
+        401: "Invalid API key. Please check your .env file.",
+        403: "Access forbidden. You might not have permission for this model or resource.",
+        404: "Model or resource not found. Please check the model name or API configuration.",
+        429: "Rate limit reached. Retrying with exponential backoff...",
+        500: "Server error (500). The provider is experiencing internal issues.",
+        502: "Bad Gateway (502). The provider's server is likely down.",
+        503: "Service Unavailable (503). The provider is overloaded or down for maintenance.",
+        504: "Gateway Timeout (504). The provider's server took too long to respond."
+    }
+    
+    friendly = messages.get(status_code, f"Unexpected error (Status {status_code})")
+    print(f"\n{R}{friendly}{R}")
+    if error_msg and status_code not in messages:
+        print(f"{R}Details: {error_msg}{R}\n")
+    else:
+        print("")
+
+def handle_exception(e):
+    """Handles httpx and other network-related exceptions."""
+    if isinstance(e, httpx.TimeoutException):
+        print(f"\n{R}Request timed out. Retrying...{R}\n")
+    elif isinstance(e, httpx.ConnectError):
+        print(f"\n{R}Network error: Could not connect to the server. Please check your internet connection.{R}\n")
+    elif isinstance(e, httpx.HTTPStatusError):
+        handle_api_error(e.response.status_code, e.response.text)
+    else:
+        print(f"\n{R}An unexpected error occurred: {e}{R}\n")
+
 def stream_openai_compatible(url, headers, payload):
     full = ""
-    try:
-        with httpx.stream("POST", url, headers=headers, json=payload, timeout=60, follow_redirects=True) as r:
-            if r.status_code != 200:
-                # Read the body to see the error message
-                error_body = r.read().decode()
-                print(f"\n{R}Error {r.status_code}: {error_body}{R}\n")
-                return ""
+    with httpx.stream("POST", url, headers=headers, json=payload, timeout=60, follow_redirects=True) as r:
+        if r.status_code != 200:
+            handle_api_error(r.status_code, r.read().decode())
+            if r.status_code in [429, 500, 502, 503, 504]:
+                raise httpx.HTTPStatusError("Retryable error", request=r.request, response=r)
+            return ""
+        
+        for line in r.iter_lines():
+            line = line.strip()
+            if not line or line == "data: [DONE]": continue
             
-            for line in r.iter_lines():
-                line = line.strip()
-                if not line or line == "data: [DONE]": continue
-                
-                if line.startswith("data:"):
-                    try:
-                        data = line[5:].strip()
-                        chunk = json.loads(data)
-                        if chunk.get('choices'):
-                            delta = chunk['choices'][0].get('delta', {}).get('content', '')
-                            if delta:
-                                print(delta, end='', flush=True)
-                                full += delta
-                    except json.JSONDecodeError: continue
-                else:
-                    # Might be a full JSON response if streaming failed or wasn't supported
-                    try:
-                        chunk = json.loads(line)
-                        if chunk.get('choices'):
-                            content = chunk['choices'][0].get('message', {}).get('content', '')
-                            if content:
-                                print(content, end='', flush=True)
-                                full += content
-                        elif chunk.get('error'):
-                            print(f"\n{R}API Error: {chunk['error']}{R}\n")
-                    except json.JSONDecodeError: continue
-    except Exception as e:
-        print(f"\n{R}Connection Error: {e}{R}\n")
+            if line.startswith("data:"):
+                try:
+                    data = line[5:].strip()
+                    chunk = json.loads(data)
+                    if chunk.get('choices'):
+                        delta = chunk['choices'][0].get('delta', {}).get('content', '')
+                        if delta:
+                            print(delta, end='', flush=True)
+                            full += delta
+                except json.JSONDecodeError: continue
+            else:
+                try:
+                    chunk = json.loads(line)
+                    if chunk.get('choices'):
+                        content = chunk['choices'][0].get('message', {}).get('content', '')
+                        if content:
+                            print(content, end='', flush=True)
+                            full += content
+                    elif chunk.get('error'):
+                        handle_api_error(r.status_code, line)
+                except json.JSONDecodeError: continue
     return full
 
 def stream_gemini(url, key, msgs):
@@ -90,34 +128,52 @@ def stream_gemini(url, key, msgs):
     full_url = f"{url}?alt=sse&key={key}"
     payload = {"contents": contents}
     
-    try:
-        with httpx.stream("POST", full_url, json=payload, timeout=60, follow_redirects=True) as r:
-            if r.status_code != 200:
-                error_body = r.read().decode()
-                print(f"\n{R}Error {r.status_code}: {error_body}{R}\n")
-                return ""
+    with httpx.stream("POST", full_url, json=payload, timeout=60, follow_redirects=True) as r:
+        if r.status_code != 200:
+            handle_api_error(r.status_code, r.read().decode())
+            if r.status_code in [429, 500, 502, 503, 504]:
+                raise httpx.HTTPStatusError("Retryable error", request=r.request, response=r)
+            return ""
+            
+        for line in r.iter_lines():
+            if not line: continue
+            try:
+                line = line.strip()
+                if line.startswith("data:"):
+                    line = line[5:].strip()
                 
-            for line in r.iter_lines():
+                line = line.lstrip(',[').rstrip(',]')
                 if not line: continue
-                try:
-                    line = line.strip()
-                    if line.startswith("data:"):
-                        line = line[5:].strip()
-                    
-                    line = line.lstrip(',[').rstrip(',]')
-                    if not line: continue
-                    
-                    chunk = json.loads(line)
-                    candidates = chunk.get('candidates', [])
-                    if candidates:
-                        text = candidates[0].get('content', {}).get('parts', [{}])[0].get('text', '')
-                        if text:
-                            print(text, end='', flush=True)
-                            full += text
-                except (json.JSONDecodeError, KeyError, IndexError): continue
-    except Exception as e:
-        print(f"\n{R}Connection Error: {e}{R}\n")
+                
+                chunk = json.loads(line)
+                candidates = chunk.get('candidates', [])
+                if candidates:
+                    text = candidates[0].get('content', {}).get('parts', [{}])[0].get('text', '')
+                    if text:
+                        print(text, end='', flush=True)
+                        full += text
+                elif chunk.get('error'):
+                    handle_api_error(r.status_code, line)
+            except (json.JSONDecodeError, KeyError, IndexError): continue
     return full
+
+def execute_with_retry(func, *args, **kwargs):
+    """Executes a function with exponential backoff retry logic."""
+    for attempt in range(MAX_RETRIES):
+        try:
+            return func(*args, **kwargs)
+        except (httpx.HTTPStatusError, httpx.TimeoutException) as e:
+            if attempt == MAX_RETRIES - 1:
+                print(f"{R}Maximum retries reached. Failing.{R}")
+                return ""
+            
+            delay = BASE_BACKOFF_DELAY * (2 ** attempt) + random.uniform(0, 1)
+            time.sleep(delay)
+            continue
+        except Exception as e:
+            handle_exception(e)
+            return ""
+    return ""
 
 def main():
     load_env()
@@ -133,6 +189,7 @@ def main():
     print("Type 'exit' or 'quit' to end.\n")
 
     msgs = [{"role": "system", "content": "You are a helpful assistant."}]
+    total_tokens = 0
     
     while True:
         try:
@@ -140,17 +197,23 @@ def main():
             if u.lower() in {'exit', 'quit'}: break
             if not u: continue
 
+            u_tokens = count_tokens(u)
             msgs.append({"role": "user", "content": u})
             print(f'{B}AI:{R} ', end='', flush=True)
             
             if args.provider == "gemini":
-                full = stream_gemini(cfg["url"], key, msgs)
+                full = execute_with_retry(stream_gemini, cfg["url"], key, msgs)
             else:
                 payload = {"model": cfg["model"], "messages": msgs, "stream": True}
-                full = stream_openai_compatible(cfg["url"], cfg.get("headers")(key), payload)
+                full = execute_with_retry(stream_openai_compatible, cfg["url"], cfg.get("headers")(key), payload)
             
-            print("\n")
-            msgs.append({"role": "assistant", "content": full})
+            if full:
+                a_tokens = count_tokens(full)
+                total_tokens += (u_tokens + a_tokens)
+                print(f"\n{C}[Tokens: {u_tokens} user, {a_tokens} ai, {total_tokens} total]{R}\n")
+                msgs.append({"role": "assistant", "content": full})
+            else:
+                print("\n")
 
         except (KeyboardInterrupt, EOFError): break
         except Exception as e: print(f'\nError: {e}\n')
