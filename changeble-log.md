@@ -34,3 +34,24 @@ Record each change here after you modify the project.
 - Why it changed: To improve robustness against varied API response formats and keep the repository clean.
 - Purpose: Prevent script crashes during interaction and exclude unnecessary files from version control.
 - Notes: Added safety checks for JSON decoding and list indexing in streaming chunks.
+
+- Date: 2026-06-10
+- File(s) changed: chatbot.py, README.md, .env.example, changeble-log.md
+- What changed: Refactored CLI to support NVIDIA, OpenRouter, and Gemini via `--provider` flag.
+- Why it changed: User requested support for multiple API providers.
+- Purpose: Increase flexibility and allow switching between different AI models.
+- Notes: Implemented custom streaming logic for Gemini's specific API format. Added argparse for CLI flags.
+
+- Date: 2026-06-10
+- File(s) changed: chatbot.py
+- What changed: Fixed 404 errors for Gemini and OpenRouter.
+- Why it changed: Gemini URL was missing '?' for the API key, and OpenRouter required redirect following.
+- Purpose: Ensure reliable connections to all providers.
+- Notes: Manually constructed Gemini URL with key and enabled `follow_redirects=True` in httpx. Refined Gemini streaming JSON parsing.
+
+- Date: 2026-06-10
+- File(s) changed: chatbot.py
+- What changed: Enhanced error logging and added Content-Type/alt=sse headers.
+- Why it changed: To diagnose persistent 404 errors and improve API compatibility.
+- Purpose: Provide better feedback to the user and ensure all required headers are sent.
+- Notes: Added `Content-Type` for OpenRouter and `alt=sse` for Gemini. Added try-except blocks for better error reporting.

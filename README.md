@@ -11,11 +11,12 @@ A terminal-based multi-turn chatbot built with Python and NVIDIA NIM (Llama 3.1)
 
 ## Features
 
+- Support for multiple providers: **NVIDIA**, **OpenRouter**, and **Gemini**
 - Multi-turn conversation with manual history maintenance
 - **Streaming responses** for a better user experience
 - Clean terminal prompts for user and AI messages
 - Graceful exit with `exit`, `quit`, `Ctrl+C`, or `Ctrl+D`
-- Minimal code footprint (~50 lines)
+- Minimal code footprint
 
 ## Setup
 
@@ -25,20 +26,25 @@ A terminal-based multi-turn chatbot built with Python and NVIDIA NIM (Llama 3.1)
 pip install httpx
 ```
 
-2. Set your NVIDIA API key:
+2. Set your API keys:
 
-Create a file named `.env` in the project root and add this line:
+Create a file named `.env` in the project root and add your keys:
 
 ```env
-NVIDIA_API_KEY=your_api_key_here
+NVIDIA_API_KEY=your_nvidia_key
+OPENROUTER_API_KEY=your_openrouter_key
+GEMINI_API_KEY=your_gemini_key
 ```
-
-You can also copy `.env.example` to `.env` and replace the placeholder value.
 
 3. Run the chatbot:
 
 ```bash
+# Default (NVIDIA)
 python chatbot.py
+
+# Specify provider
+python chatbot.py --provider openrouter
+python chatbot.py --provider gemini
 ```
 
 ## How It Works
