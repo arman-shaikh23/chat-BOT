@@ -43,6 +43,13 @@ Use these prompts directly in the chatbot.
 - What happens when a rate limit (429) is hit?
 - How many tokens did our last exchange use?
 
+## Codebase Analysis
+
+- Run `python chatbot.py --explain` to analyze this project.
+- Explain the connection between `chatbot.py` and `config.py`.
+- How is the CSV usage logging implemented?
+- What files are ignored by the codebase scanner?
+
 ## Exit
 
 - Type `exit` or `quit` inside the app to close it.

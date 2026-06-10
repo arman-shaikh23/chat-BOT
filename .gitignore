@@ -13,3 +13,8 @@ ENV/
 # OS
 .DS_Store
 Thumbs.db
+
+# Logs
+logs/
+*.log
+usage_dashboard.csv

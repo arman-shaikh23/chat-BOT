@@ -16,6 +16,12 @@ SYSTEM_PROMPT = "You are a helpful assistant."
 LOGS_DIR = "logs"
 APP_LOG_FILE = f"{LOGS_DIR}/app.log"
 ERROR_LOG_FILE = f"{LOGS_DIR}/error.log"
+USAGE_LOG_CSV = f"{LOGS_DIR}/usage_dashboard.csv"
+
+# Codebase Explainer Configuration
+EXPLAIN_CODEBASE_MAX_TOKENS = 10000
+IGNORE_DIRS = [".git", "__pycache__", ".venv", "node_modules", "logs"]
+ALLOWED_EXTENSIONS = [".py", ".md", ".txt", ".js", ".ts", ".json", ".yaml", ".yml"]
 
 # Provider Fallback Order (if primary provider fails)
 FALLBACK_PROVIDERS = ["nvidia", "openrouter", "gemini"]

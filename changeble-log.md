@@ -50,8 +50,8 @@ Record each change here after you modify the project.
 - Notes: Manually constructed Gemini URL with key and enabled `follow_redirects=True` in httpx. Refined Gemini streaming JSON parsing.
 
 - Date: 2026-06-10
-- File(s) changed: chatbot.py, README.md, prompt.md, changeble-log.md
-- What changed: Implemented error handling, exponential backoff, retry logic, and token counting.
-- Why it changed: User requested enhanced reliability and usage tracking.
-- Purpose: Ensure the chatbot remains functional during API instability and provide users with token usage data.
-- Notes: Token counting is a rough estimate (4 chars/token). Exponential backoff uses jitter for better performance.
+- File(s) changed: chatbot.py, config.py, README.md, changeble-log.md
+- What changed: Added codebase explainer tool and CSV usage logging for NVIDIA, Gemini, and OpenRouter.
+- Why it changed: User requested project analysis and usage tracking for their existing API setup.
+- Purpose: Enable project analysis and usage tracking without requiring Anthropic.
+- Notes: CSV dashboard is in `logs/usage_dashboard.csv`. The `--explain` tool works with all supported providers.

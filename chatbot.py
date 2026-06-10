@@ -1,5 +1,10 @@
-import os, json, httpx, pathlib, argparse, sys, time, random
-from config import MAX_RETRIES, BASE_BACKOFF_DELAY, AVG_CHARS_PER_TOKEN
+import os, json, httpx, pathlib, argparse, sys, time, random, csv
+from datetime import datetime
+from config import (
+    MAX_RETRIES, BASE_BACKOFF_DELAY, AVG_CHARS_PER_TOKEN, 
+    USAGE_LOG_CSV, LOGS_DIR, EXPLAIN_CODEBASE_MAX_TOKENS,
+    IGNORE_DIRS, ALLOWED_EXTENSIONS
+)
 
 # Terminal Colors
 G, B, R, Y, C = '\033[92m', '\033[94m', '\033[0m', '\033[93m', '\033[96m'
@@ -40,9 +45,44 @@ def get_config(provider):
     }
     return configs.get(provider)
 
+def log_usage_csv(provider, model, u_tokens, a_tokens):
+    """Logs API call metrics to a CSV file for the dashboard."""
+    os.makedirs(LOGS_DIR, exist_ok=True)
+    file_exists = os.path.isfile(USAGE_LOG_CSV)
+    
+    total = u_tokens + a_tokens
+    
+    with open(USAGE_LOG_CSV, mode='a', newline='') as f:
+        writer = csv.writer(f)
+        if not file_exists:
+            writer.writerow(["Timestamp", "Provider", "Model", "UserTokens", "AITokens", "TotalTokens"])
+        writer.writerow([datetime.now().strftime("%Y-%m-%d %H:%M:%S"), provider, model, u_tokens, a_tokens, total])
+
 def count_tokens(text):
     """Simple token estimation based on character count."""
     return len(text) // AVG_CHARS_PER_TOKEN
+
+def scan_codebase():
+    """Scans the codebase and returns a concatenated string of file contents."""
+    docs = []
+    current_tokens = 0
+    
+    for path in pathlib.Path('.').rglob('*'):
+        if any(ignored in path.parts for ignored in IGNORE_DIRS): continue
+        if path.is_file() and path.suffix in ALLOWED_EXTENSIONS:
+            try:
+                content = path.read_text(encoding='utf-8', errors='ignore')
+                file_doc = f"--- FILE: {path} ---\n{content}\n"
+                tokens = count_tokens(file_doc)
+                
+                if current_tokens + tokens > EXPLAIN_CODEBASE_MAX_TOKENS:
+                    break
+                
+                docs.append(file_doc)
+                current_tokens += tokens
+            except Exception: continue
+            
+    return "\n".join(docs), current_tokens
 
 def handle_api_error(status_code, error_body=""):
     """Maps API status codes to user-friendly messages."""
@@ -179,6 +219,7 @@ def main():
     load_env()
     parser = argparse.ArgumentParser(description="Multi-Provider CLI Chatbot")
     parser.add_argument("--provider", choices=["nvidia", "openrouter", "gemini"], default="nvidia", help="AI provider to use")
+    parser.add_argument("--explain", action="store_true", help="Explain the current codebase")
     args = parser.parse_args()
 
     cfg = get_config(args.provider)
@@ -186,8 +227,30 @@ def main():
     if not key: return print(f"Error: {cfg['key_env']} not found in .env")
 
     print(f'{Y}--- CLI Chatbot ({args.provider.upper()}) ---{R}')
-    print("Type 'exit' or 'quit' to end.\n")
+    
+    if args.explain:
+        print(f"{C}Scanning codebase (max {EXPLAIN_CODEBASE_MAX_TOKENS} tokens)...{R}")
+        code_context, token_count = scan_codebase()
+        print(f"{C}Found {token_count} tokens of code. Preparing explanation...{R}\n")
+        
+        msgs = [
+            {"role": "system", "content": "You are an expert software architect. Analyze the provided codebase and explain its architecture, flow, and key components."},
+            {"role": "user", "content": f"Here is the codebase:\n\n{code_context}\n\nPlease explain how this works."}
+        ]
+        
+        print(f'{B}Architect:{R} ', end='', flush=True)
+        if args.provider == "gemini":
+            full = execute_with_retry(stream_gemini, cfg["url"], key, msgs)
+        else:
+            payload = {"model": cfg["model"], "messages": msgs, "stream": True}
+            full = execute_with_retry(stream_openai_compatible, cfg["url"], cfg.get("headers")(key), payload)
+        
+        if full:
+            log_usage_csv(args.provider, cfg.get("model", "gemini"), token_count, count_tokens(full))
+        print("\n")
+        return
 
+    print("Type 'exit' or 'quit' to end.\n")
     msgs = [{"role": "system", "content": "You are a helpful assistant."}]
     total_tokens = 0
     
@@ -210,6 +273,7 @@ def main():
             if full:
                 a_tokens = count_tokens(full)
                 total_tokens += (u_tokens + a_tokens)
+                log_usage_csv(args.provider, cfg.get("model", "gemini"), u_tokens, a_tokens)
                 print(f"\n{C}[Tokens: {u_tokens} user, {a_tokens} ai, {total_tokens} total]{R}\n")
                 msgs.append({"role": "assistant", "content": full})
             else:
